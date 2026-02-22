@@ -380,7 +380,8 @@ function TeamBoard(props: { onError: (e: string) => void }) {
                   <div><div style={{fontWeight:600,fontSize:16}}>{m.name}</div><div style={{fontSize:12,color:m.status==="active"?"#10b981":"#9ca3af"}}>{m.status==="active"?"● 在线":"○ 空闲"}</div></div>
                 </div>
                 <p style={{fontSize:13,color:"#6b7280",margin:"0 0 12px 0"}}>{m.description}</p>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{m.skills.map((s,i)=><span key={i} style={{fontSize:11,backgroundColor:"#f3f4f6",color:"#4b5563",padding:"2px 8px",borderRadius:12}}>{s}</span>)}</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:12}}>{m.skills.map((s,i)=><span key={i} style={{fontSize:11,backgroundColor:"#f3f4f6",color:"#4b5563",padding:"2px 8px",borderRadius:12}}>{s}</span>)}</div>
+                <button onClick={()=>alert('正在启动与 '+m.name+' 的对话...\n\n角色设定：'+m.description+'\n\n技能：'+m.skills.join(", "))} style={{marginTop:12,width:"100%",padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",backgroundColor:"#10b981",color:"white",fontSize:13}}>💬 开始对话</button>
               </div>
             ))}
             {byRole(role).length===0 && <div style={{color:"#9ca3af",fontSize:13,padding:8}}>暂无成员</div>}
@@ -504,6 +505,7 @@ function OfficeBoard(props: { onError: (e: string) => void }) {
               </button>
               <button onClick={()=>setEditing(agent)} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #e5e7eb",cursor:"pointer",backgroundColor:"white",fontSize:13}}>✏️</button>
             </div>
+            <button onClick={()=>alert('正在启动与 '+agent.name+' 的对话...\n\n角色：'+agent.role+'\n\n状态：'+agent.status)} style={{marginTop:12,width:"100%",padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",backgroundColor:"#7c3aed",color:"white",fontSize:13}}>💬 开始对话</button>
           </div>
         ))}
       </div>
