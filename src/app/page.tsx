@@ -14,10 +14,6 @@ interface Task {
   createdAt: number;
 }
 
-// 使用环境变量（需要在 Vercel 中配置）
-const GIST_ID = process.env.NEXT_PUBLIC_GIST_ID || "";
-const GIST_TOKEN = process.env.GIST_TOKEN || "";
-
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "📋 待办",
   in_progress: "🔄 进行中",
@@ -40,28 +36,23 @@ export default function TaskBoard() {
   });
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 从 Gist 加载任务
+  // 从 API 加载任务
   const fetchTasks = async () => {
-    if (!GIST_ID || !GIST_TOKEN) {
-      const saved = localStorage.getItem("task-board-tasks");
-      if (saved) setTasks(JSON.parse(saved));
-      setLoading(false);
-      setError("⚠️ 请在 Vercel 配置环境变量以启用云同步");
-      return;
-    }
-
     try {
       setSyncing(true);
-      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        headers: { Authorization: `token ${GIST_TOKEN}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch");
+      const response = await fetch("/api/tasks");
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch");
+      }
+      
       const data = await response.json();
-      const content = data.files["tasks.json"]?.content || "[]";
-      setTasks(JSON.parse(content));
+      setTasks(data);
       setLastUpdated(Date.now());
       setError(null);
     } catch (err) {
+      console.error("Failed to fetch tasks:", err);
+      // 使用本地后备
       const saved = localStorage.getItem("task-board-tasks");
       if (saved) setTasks(JSON.parse(saved));
       setError("同步失败，使用本地数据");
@@ -75,27 +66,21 @@ export default function TaskBoard() {
   const saveTasks = async (newTasks: Task[]) => {
     setTasks(newTasks);
     setLastUpdated(Date.now());
+    // 本地后备
     localStorage.setItem("task-board-tasks", JSON.stringify(newTasks));
-
-    if (!GIST_ID || !GIST_TOKEN) {
-      setError("⚠️ 请在 Vercel 配置环境变量以启用云同步");
-      return;
-    }
 
     try {
       setSyncing(true);
-      await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `token ${GIST_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          files: { "tasks.json": { content: JSON.stringify(newTasks, null, 2) } },
-        }),
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newTasks),
       });
+      
+      if (!response.ok) throw new Error("Failed to save");
       setError(null);
     } catch (err) {
+      console.error("Failed to save tasks:", err);
       setError("保存失败，数据已保存到本地");
     } finally {
       setSyncing(false);
