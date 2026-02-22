@@ -52,6 +52,14 @@ const STAGE_COLORS: Record<ContentStage, string> = {
   published: "#d1fae5",
 };
 
+// 辅助函数：获取图片数量
+const getImageCount = (images: string[] | string | undefined): number => {
+  if (!images) return 0;
+  if (Array.isArray(images)) return images.length;
+  if (typeof images === "string") return images.split("\n").filter(Boolean).length;
+  return 0;
+};
+
 // ==================== API 函数 ====================
 async function fetchTasks(): Promise<Task[]> {
   const res = await fetch("/api/tasks");
@@ -352,7 +360,7 @@ function ContentPipeline({ onError }: { onError: (err: string) => void }) {
                     <span style={{ fontSize: "10px", color: item.assignee === "大哥" ? "#7c3aed" : "#0369a1", backgroundColor: item.assignee === "大哥" ? "#f3e8ff" : "#e0f2fe", padding: "2px 6px", borderRadius: "4px" }}>
                       {item.assignee === "大哥" ? "👤" : "🤖"} {item.assignee}
                     </span>
-                    {typeof item.images === "string" ? item.images.split("\n").filter(Boolean).length : (Array.isArray(item.images) ? item.images.length : 0) > 0 && <span style={{ fontSize: "10px" }}>🖼️ {typeof item.images === "string" ? item.images.split("\n").filter(Boolean).length : item.images.length}</span>}
+                    {getImageCount(item.images) > 0 && <span style={{ fontSize: "10px" }}>🖼️ {getImageCount(item.images)}</span>}
                   </div>
                 </div>
               ))}
