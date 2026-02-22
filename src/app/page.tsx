@@ -8,6 +8,7 @@ type Assignee = "大哥" | "BRO";
 interface Task { id: string; title: string; description?: string; status: TaskStatus; assignee: Assignee; createdAt: number; }
 interface ContentItem { id: string; title: string; description?: string; script?: string; images: string[] | string; stage: ContentStage; assignee: Assignee; createdAt: number; updatedAt: number; }
 interface CalendarEvent { id: string; title: string; description?: string; date: string; time?: string; type: "cron" | "scheduled" | "reminder"; assignee: Assignee; completed: boolean; createdAt: number; }
+interface MemoryDoc { id: string; title: string; content: string; tags: string[]; createdAt: number; updatedAt: number; }
 
 const STATUS_LABELS: Record<TaskStatus, string> = { todo: "📋 待办", in_progress: "🔄 进行中", review: "👀 审核", done: "✅ 完成" };
 const STAGE_LABELS: Record<ContentStage, string> = { idea: "💡 灵感", scripting: "📝 脚本", production: "🎬 制作", review: "👀 审核", published: "🚀 已发布" };
@@ -21,6 +22,8 @@ async function fetchContent() { const r = await fetch("/api/content"); return r.
 async function saveContent(t: ContentItem[]) { await fetch("/api/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
 async function fetchCalendar() { const r = await fetch("/api/calendar"); return r.ok ? r.json() : []; }
 async function saveCalendar(t: CalendarEvent[]) { await fetch("/api/calendar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
+async function fetchMemory() { const r = await fetch("/api/memory"); return r.ok ? r.json() : []; }
+async function saveMemory(t: MemoryDoc[]) { await fetch("/api/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
 
 function TaskBoard(props: { onError: (e: string) => void }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -251,8 +254,81 @@ function CalendarBoard(props: { onError: (e: string) => void }) {
   );
 }
 
+function MemoryBoard(props: { onError: (e: string) => void }) {
+  const [memories, setMemories] = useState<MemoryDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<MemoryDoc | null>(null);
+  const [search, setSearch] = useState("");
+  const [newM, setNewM] = useState({ title: "", content: "", tags: "" });
+
+  useEffect(() => { fetchMemory().then(setMemories).catch(() => { const s = localStorage.getItem("memory-docs"); if (s) setMemories(JSON.parse(s)); }).finally(() => setLoading(false)); }, []);
+  const save = async (nm: MemoryDoc[]) => { setMemories(nm); localStorage.setItem("memory-docs", JSON.stringify(nm)); try { await saveMemory(nm); } catch { props.onError("保存失败"); } };
+  const add = () => { if (!newM.title.trim()) return; const m: MemoryDoc = { id: Date.now().toString(), title: newM.title, content: newM.content, tags: newM.tags.split(",").map(t => t.trim()).filter(Boolean), createdAt: Date.now(), updatedAt: Date.now() }; save([m, ...memories]); setNewM({ title: "", content: "", tags: "" }); setShowAdd(false); };
+  const upd = () => { if (!editing || !editing.title.trim()) return; save(memories.map(m => m.id === editing.id ? { ...editing, updatedAt: Date.now() } : m)); setEditing(null); };
+  const del = (id: string) => { if (confirm("删除？")) save(memories.filter(m => m.id !== id)); };
+  const filtered = search ? memories.filter(m => m.title.toLowerCase().includes(search.toLowerCase()) || m.content.toLowerCase().includes(search.toLowerCase()) || m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))) : memories;
+  if (loading) return <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>⏳</div>;
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <h2 style={{fontSize:24,fontWeight:"bold",margin:0}}>🧠 记忆库</h2>
+        <button onClick={()=>setShowAdd(true)} style={{backgroundColor:"#0891b2",color:"white",padding:"10px 20px",borderRadius:8,border:"none",cursor:"pointer"}}>➕ 新建记忆</button>
+      </div>
+      
+      {/* 搜索框 */}
+      <div style={{marginBottom:24}}>
+        <input type="text" value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="🔍 搜索记忆..." style={{width:"100%",padding:"12px 16px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:14,boxShadow:"0 1px 2px rgba(0,0,0,0.05)"}} />
+      </div>
+
+      {/* 记忆列表 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+        {filtered.map(m => (
+          <div key={m.id} style={{backgroundColor:"white",borderRadius:12,padding:20,boxShadow:"0 1px 3px rgba(0,0,0,0.1)",border:"1px solid #e5e7eb",cursor:"pointer"}} onClick={()=>setEditing(m)}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+              <h3 style={{fontSize:16,fontWeight:"600",margin:0,color:"#1f2937"}}>{m.title}</h3>
+              <button onClick={(e)=>{e.stopPropagation();del(m.id)}} style={{background:"none",border:"none",color:"#9ca3af",cursor:"pointer",fontSize:18,padding:0}}>×</button>
+            </div>
+            <p style={{fontSize:13,color:"#6b7280",margin:"0 0 12px 0",lineHeight:1.6,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{m.content}</p>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {m.tags.map((t,i)=><span key={i} style={{fontSize:11,backgroundColor:"#f3f4f6",color:"#4b5563",padding:"2px 8px",borderRadius:12}}>#{t}</span>)}
+            </div>
+            <div style={{fontSize:11,color:"#9ca3af",marginTop:12}}>{new Date(m.updatedAt).toLocaleDateString("zh-CN")}</div>
+          </div>
+        ))}
+        {filtered.length===0 && <div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:"#9ca3af"}}>{search?"没有找到相关记忆":"暂无记忆，点击添加"}</div>}
+      </div>
+
+      {showAdd && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{backgroundColor:"white",borderRadius:12,padding:24,width:"90%",maxWidth:500,maxHeight:"80vh",overflow:"auto"}}>
+            <h3 style={{marginBottom:16}}>➕ 新建记忆</h3>
+            <input type="text" value={newM.title} onChange={(e)=>setNewM({...newM,title:e.target.value})} placeholder="标题" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <textarea value={newM.content} onChange={(e)=>setNewM({...newM,content:e.target.value})} placeholder="内容" rows={8} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12,fontFamily:"inherit",resize:"vertical"}} />
+            <input type="text" value={newM.tags} onChange={(e)=>setNewM({...newM,tags:e.target.value})} placeholder="标签 (逗号分隔)" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button onClick={()=>setShowAdd(false)}>取消</button><button onClick={add} style={{padding:"8px 20px",backgroundColor:"#0891b2",color:"white",border:"none",borderRadius:8,cursor:"pointer"}}>创建</button></div>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{backgroundColor:"white",borderRadius:12,padding:24,width:"90%",maxWidth:500,maxHeight:"80vh",overflow:"auto"}}>
+            <h3 style={{marginBottom:16}}>✏️ 编辑记忆</h3>
+            <input type="text" value={editing.title} onChange={(e)=>setEditing({...editing,title:e.target.value})} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <textarea value={editing.content} onChange={(e)=>setEditing({...editing,content:e.target.value})} rows={10} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12,fontFamily:"inherit",resize:"vertical"}} />
+            <input type="text" value={editing.tags.join(", ")} onChange={(e)=>setEditing({...editing,tags:e.target.value.split(",").map(t=>t.trim()).filter(Boolean)})} placeholder="标签 (逗号分隔)" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button onClick={()=>setEditing(null)}>取消</button><button onClick={upd} style={{padding:"8px 20px",backgroundColor:"#0891b2",color:"white",border:"none",borderRadius:8,cursor:"pointer"}}>保存</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"tasks" | "content" | "calendar">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "content" | "calendar" | "memory">("tasks");
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -277,11 +353,14 @@ export default function Home() {
           <button onClick={()=>setActiveTab("calendar")} style={{padding:"12px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:500,backgroundColor:activeTab==="calendar"?"#059669":"white",color:activeTab==="calendar"?"white":"#666",boxShadow:activeTab==="calendar"?"none":"0 1px 2px rgba(0,0,0,0.1)"}}>
             📅 日历看板
           </button>
+          <button onClick={()=>setActiveTab("memory")} style={{padding:"12px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:500,backgroundColor:activeTab==="memory"?"#0891b2":"white",color:activeTab==="memory"?"white":"#666",boxShadow:activeTab==="memory"?"none":"0 1px 2px rgba(0,0,0,0.1)"}}>
+            🧠 记忆库
+          </button>
         </div>
 
         {/* 内容区域 */}
         <div style={{backgroundColor:"white",borderRadius:12,padding:24,boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}}>
-          {activeTab==="tasks"?<TaskBoard onError={setError}/>:activeTab==="content"?<ContentPipeline onError={setError}/>:<CalendarBoard onError={setError}/>}
+          {activeTab==="tasks"?<TaskBoard onError={setError}/>:activeTab==="content"?<ContentPipeline onError={setError}/>:activeTab==="calendar"?<CalendarBoard onError={setError}/>:<MemoryBoard onError={setError}/>}
         </div>
       </div>
     </div>
