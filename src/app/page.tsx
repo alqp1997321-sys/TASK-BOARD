@@ -9,6 +9,7 @@ interface Task { id: string; title: string; description?: string; status: TaskSt
 interface ContentItem { id: string; title: string; description?: string; script?: string; images: string[] | string; stage: ContentStage; assignee: Assignee; createdAt: number; updatedAt: number; }
 interface CalendarEvent { id: string; title: string; description?: string; date: string; time?: string; type: "cron" | "scheduled" | "reminder"; assignee: Assignee; completed: boolean; createdAt: number; }
 interface MemoryDoc { id: string; title: string; content: string; tags: string[]; createdAt: number; updatedAt: number; }
+interface TeamMember { id: string; name: string; role: string; description: string; avatar: string; status: "active" | "idle"; skills: string[]; }
 
 const STATUS_LABELS: Record<TaskStatus, string> = { todo: "📋 待办", in_progress: "🔄 进行中", review: "👀 审核", done: "✅ 完成" };
 const STAGE_LABELS: Record<ContentStage, string> = { idea: "💡 灵感", scripting: "📝 脚本", production: "🎬 制作", review: "👀 审核", published: "🚀 已发布" };
@@ -24,6 +25,8 @@ async function fetchCalendar() { const r = await fetch("/api/calendar"); return 
 async function saveCalendar(t: CalendarEvent[]) { await fetch("/api/calendar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
 async function fetchMemory() { const r = await fetch("/api/memory"); return r.ok ? r.json() : []; }
 async function saveMemory(t: MemoryDoc[]) { await fetch("/api/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
+async function fetchTeam() { const r = await fetch("/api/team"); return r.ok ? r.json() : []; }
+async function saveTeam(t: TeamMember[]) { await fetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
 
 function TaskBoard(props: { onError: (e: string) => void }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -327,8 +330,104 @@ function MemoryBoard(props: { onError: (e: string) => void }) {
   );
 }
 
+function TeamBoard(props: { onError: (e: string) => void }) {
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<TeamMember | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newM, setNewM] = useState({ name: "", role: "", description: "", avatar: "🤖", status: "idle" as "active" | "idle", skills: "" });
+
+  const defaultMembers: TeamMember[] = [
+    { id: "1", name: "BRO", role: "主助手", description: "AI助手，协调所有子代理，负责与大哥直接沟通", avatar: "🤖", status: "active", skills: ["任务管理", "决策", "协调"] },
+    { id: "2", name: "CodeMaster", role: "开发者", description: "代码开发、调试、技术难题攻关", avatar: "💻", status: "idle", skills: ["Python", "JavaScript", "API", "DevOps"] },
+    { id: "3", name: "Wordsmith", role: "写作者", description: "内容创作、文案撰写、脚本编写", avatar: "✍️", status: "idle", skills: ["写作", "翻译", "summarize"] },
+    { id: "4", name: "PixelArtist", role: "设计师", description: "视觉设计、图片处理、PDF编辑", avatar: "🎨", status: "idle", skills: ["nano-pdf", "图像处理", "UI设计"] },
+    { id: "5", name: "OpsGuard", role: "运维", description: "系统健康检查、安全审计、自动化", avatar: "🛡️", status: "idle", skills: ["healthcheck", "自动化", "监控"] },
+  ];
+
+  useEffect(() => { fetchTeam().then(t => { if (t.length === 0) { setTeam(defaultMembers); saveTeam(defaultMembers).catch(() => {}); } else setTeam(t); }).catch(() => setTeam(defaultMembers)).finally(() => setLoading(false)); }, []);
+  const save = async (nt: TeamMember[]) => { setTeam(nt); localStorage.setItem("team-members", JSON.stringify(nt)); try { await saveTeam(nt); } catch { props.onError("保存失败"); } };
+  const upd = () => { if (!editing || !editing.name.trim()) return; save(team.map(m => m.id === editing.id ? editing : m)); setEditing(null); };
+  const add = () => { if (!newM.name.trim()) return; const m: TeamMember = { id: Date.now().toString(), ...newM, skills: newM.skills.split(",").map(s => s.trim()).filter(Boolean) }; save([...team, m]); setNewM({ name: "", role: "", description: "", avatar: "🤖", status: "idle", skills: "" }); };
+  const del = (id: string) => { if (confirm("删除成员？")) save(team.filter(m => m.id !== id)); };
+  const byRole = (r: string) => team.filter(m => m.role === r);
+  const roles = ["主助手", "开发者", "写作者", "设计师", "运维"];
+  const roleColors: Record<string, string> = { "主助手": "#fef3c7", "开发者": "#dbeafe", "写作者": "#e0e7ff", "设计师": "#fce7f3", "运维": "#d1fae5" };
+  if (loading) return <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>⏳</div>;
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <h2 style={{fontSize:24,fontWeight:"bold",margin:0}}>👥 团队结构</h2>
+        <button onClick={() => setShowAdd(true)} style={{backgroundColor:"#dc2626",color:"white",padding:"10px 20px",borderRadius:8,border:"none",cursor:"pointer"}}>➕ 添加成员</button>
+      </div>
+
+      {/* 角色分组展示 */}
+      {roles.map(role => (
+        <div key={role} style={{marginBottom:32}}>
+          <h3 style={{fontSize:16,fontWeight:600,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:12,height:12,borderRadius:"50%",backgroundColor:roleColors[role]||"#e5e7eb",display:"inline-block"}}></span>
+            {role} <span style={{fontWeight:400,fontSize:14,color:"#9ca3af"}}>({byRole(role).length})</span>
+          </h3>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+            {byRole(role).map(m => (
+              <div key={m.id} style={{backgroundColor:"white",borderRadius:12,padding:20,boxShadow:"0 1px 3px rgba(0,0,0,0.1)",border:"1px solid #e5e7eb"}} onClick={()=>setEditing(m)}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                  <span style={{fontSize:32}}>{m.avatar}</span>
+                  <div><div style={{fontWeight:600,fontSize:16}}>{m.name}</div><div style={{fontSize:12,color:m.status==="active"?"#10b981":"#9ca3af"}}>{m.status==="active"?"● 在线":"○ 空闲"}</div></div>
+                </div>
+                <p style={{fontSize:13,color:"#6b7280",margin:"0 0 12px 0"}}>{m.description}</p>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{m.skills.map((s,i)=><span key={i} style={{fontSize:11,backgroundColor:"#f3f4f6",color:"#4b5563",padding:"2px 8px",borderRadius:12}}>{s}</span>)}</div>
+              </div>
+            ))}
+            {byRole(role).length===0 && <div style={{color:"#9ca3af",fontSize:13,padding:8}}>暂无成员</div>}
+          </div>
+        </div>
+      ))}
+
+      {editing && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{backgroundColor:"white",borderRadius:12,padding:24,width:"90%",maxWidth:400}}>
+            <h3 style={{marginBottom:16}}>✏️ 编辑成员</h3>
+            <input type="text" value={editing.name} onChange={(e)=>setEditing({...editing,name:e.target.value})} placeholder="名称" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={editing.role} onChange={(e)=>setEditing({...editing,role:e.target.value})} placeholder="角色" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={editing.avatar} onChange={(e)=>setEditing({...editing,avatar:e.target.value})} placeholder="头像 emoji" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <textarea value={editing.description} onChange={(e)=>setEditing({...editing,description:e.target.value})} placeholder="描述" rows={2} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={editing.skills.join(", ")} onChange={(e)=>setEditing({...editing,skills:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})} placeholder="技能 (逗号分隔)" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <div style={{display:"flex",gap:12,marginBottom:16}}>
+              <label style={{display:"flex",alignItems:"center",gap:8}}><input type="radio" checked={editing.status==="active"} onChange={()=>setEditing({...editing,status:"active"})} /> 在线</label>
+              <label style={{display:"flex",alignItems:"center",gap:8}}><input type="radio" checked={editing.status==="idle"} onChange={()=>setEditing({...editing,status:"idle"})} /> 空闲</label>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between"}}>
+              <button onClick={()=>del(editing.id)} style={{backgroundColor:"#ef4444",color:"white",padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer"}}>删除</button>
+              <div style={{display:"flex",gap:8}}><button onClick={()=>setEditing(null)}>取消</button><button onClick={upd} style={{padding:"8px 20px",backgroundColor:"#2563eb",color:"white",border:"none",borderRadius:8,cursor:"pointer"}}>保存</button></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAdd && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{backgroundColor:"white",borderRadius:12,padding:24,width:"90%",maxWidth:400}}>
+            <h3 style={{marginBottom:16}}>➕ 添加成员</h3>
+            <input type="text" value={newM.name} onChange={(e)=>setNewM({...newM,name:e.target.value})} placeholder="名称" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <select value={newM.role} onChange={(e)=>setNewM({...newM,role:e.target.value})} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}}>
+              <option value="">选择角色</option>
+              {roles.map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+            <input type="text" value={newM.avatar} onChange={(e)=>setNewM({...newM,avatar:e.target.value})} placeholder="头像 emoji" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <textarea value={newM.description} onChange={(e)=>setNewM({...newM,description:e.target.value})} placeholder="描述" rows={2} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={newM.skills} onChange={(e)=>setNewM({...newM,skills:e.target.value})} placeholder="技能 (逗号分隔)" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button onClick={()=>setShowAdd(false)}>取消</button><button onClick={add} style={{padding:"8px 20px",backgroundColor:"#2563eb",color:"white",border:"none",borderRadius:8,cursor:"pointer"}}>添加</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"tasks" | "content" | "calendar" | "memory">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "content" | "calendar" | "memory" | "team">("tasks");
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -356,11 +455,14 @@ export default function Home() {
           <button onClick={()=>setActiveTab("memory")} style={{padding:"12px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:500,backgroundColor:activeTab==="memory"?"#0891b2":"white",color:activeTab==="memory"?"white":"#666",boxShadow:activeTab==="memory"?"none":"0 1px 2px rgba(0,0,0,0.1)"}}>
             🧠 记忆库
           </button>
+          <button onClick={()=>setActiveTab("team")} style={{padding:"12px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:500,backgroundColor:activeTab==="team"?"#dc2626":"white",color:activeTab==="team"?"white":"#666",boxShadow:activeTab==="team"?"none":"0 1px 2px rgba(0,0,0,0.1)"}}>
+            👥 团队
+          </button>
         </div>
 
         {/* 内容区域 */}
         <div style={{backgroundColor:"white",borderRadius:12,padding:24,boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}}>
-          {activeTab==="tasks"?<TaskBoard onError={setError}/>:activeTab==="content"?<ContentPipeline onError={setError}/>:activeTab==="calendar"?<CalendarBoard onError={setError}/>:<MemoryBoard onError={setError}/>}
+          {activeTab==="tasks"?<TaskBoard onError={setError}/>:activeTab==="content"?<ContentPipeline onError={setError}/>:activeTab==="calendar"?<CalendarBoard onError={setError}/>:activeTab==="memory"?<MemoryBoard onError={setError}/>:<TeamBoard onError={setError}/>}
         </div>
       </div>
     </div>
