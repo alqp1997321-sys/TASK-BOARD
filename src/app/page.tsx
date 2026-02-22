@@ -10,6 +10,7 @@ interface ContentItem { id: string; title: string; description?: string; script?
 interface CalendarEvent { id: string; title: string; description?: string; date: string; time?: string; type: "cron" | "scheduled" | "reminder"; assignee: Assignee; completed: boolean; createdAt: number; }
 interface MemoryDoc { id: string; title: string; content: string; tags: string[]; createdAt: number; updatedAt: number; }
 interface TeamMember { id: string; name: string; role: string; description: string; avatar: string; status: "active" | "idle"; skills: string[]; }
+interface OfficeAgent { id: string; name: string; avatar: string; role: string; status: "working" | "idle" | "break"; currentTask: string; computerOn: boolean; }
 
 const STATUS_LABELS: Record<TaskStatus, string> = { todo: "📋 待办", in_progress: "🔄 进行中", review: "👀 审核", done: "✅ 完成" };
 const STAGE_LABELS: Record<ContentStage, string> = { idea: "💡 灵感", scripting: "📝 脚本", production: "🎬 制作", review: "👀 审核", published: "🚀 已发布" };
@@ -27,6 +28,8 @@ async function fetchMemory() { const r = await fetch("/api/memory"); return r.ok
 async function saveMemory(t: MemoryDoc[]) { await fetch("/api/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
 async function fetchTeam() { const r = await fetch("/api/team"); return r.ok ? r.json() : []; }
 async function saveTeam(t: TeamMember[]) { await fetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
+async function fetchOffice() { const r = await fetch("/api/office"); return r.ok ? r.json() : []; }
+async function saveOffice(t: OfficeAgent[]) { await fetch("/api/office", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) }); }
 
 function TaskBoard(props: { onError: (e: string) => void }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -426,8 +429,109 @@ function TeamBoard(props: { onError: (e: string) => void }) {
   );
 }
 
+function OfficeBoard(props: { onError: (e: string) => void }) {
+  const [agents, setAgents] = useState<OfficeAgent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<OfficeAgent | null>(null);
+
+  const defaultAgents: OfficeAgent[] = [
+    { id: "1", name: "BRO", avatar: "🤖", role: "主助手", status: "working", currentTask: "与大哥沟通中", computerOn: true },
+    { id: "2", name: "CodeMaster", avatar: "💻", role: "开发者", status: "idle", currentTask: "", computerOn: true },
+    { id: "3", name: "Wordsmith", avatar: "✍️", role: "写作者", status: "idle", currentTask: "", computerOn: false },
+    { id: "4", name: "PixelArtist", avatar: "🎨", role: "设计师", status: "idle", currentTask: "", computerOn: true },
+    { id: "5", name: "OpsGuard", avatar: "🛡️", role: "运维", status: "break", currentTask: "休息中", computerOn: false },
+  ];
+
+  useEffect(() => { fetchOffice().then(a => { if (a.length === 0) { setAgents(defaultAgents); saveOffice(defaultAgents).catch(() => {}); } else setAgents(a); }).catch(() => setAgents(defaultAgents)).finally(() => setLoading(false)); }, []);
+  const save = async (na: OfficeAgent[]) => { setAgents(na); localStorage.setItem("office-agents", JSON.stringify(na)); try { await saveOffice(na); } catch { props.onError("保存失败"); } };
+  const toggleStatus = (id: string) => { save(agents.map(a => a.id === id ? { ...a, status: a.status === "working" ? "idle" : "working", currentTask: a.status === "working" ? "" : "工作中" } : a)); };
+  const toggleComputer = (id: string) => { save(agents.map(a => a.id === id ? { ...a, computerOn: !a.computerOn } : a)); };
+  const upd = () => { if (!editing) return; save(agents.map(a => a.id === editing.id ? editing : a)); setEditing(null); };
+  const byStatus = (s: string) => agents.filter(a => a.status === s);
+  const statusColors: Record<string, string> = { working: "#10b981", idle: "#6b7280", break: "#f59e0b" };
+  if (loading) return <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>⏳</div>;
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <h2 style={{fontSize:24,fontWeight:"bold",margin:0}}>🏢 数字办公室</h2>
+        <div style={{display:"flex",gap:12}}>
+          <span style={{backgroundColor:"#10b981",color:"white",padding:"6px 12px",borderRadius:20,fontSize:13}}>工作中: {byStatus("working").length}</span>
+          <span style={{backgroundColor:"#6b7280",color:"white",padding:"6px 12px",borderRadius:20,fontSize:13}}>空闲: {byStatus("idle").length}</span>
+          <span style={{backgroundColor:"#f59e0b",color:"white",padding:"6px 12px",borderRadius:20,fontSize:13}}>休息: {byStatus("break").length}</span>
+        </div>
+      </div>
+
+      {/* 办公室视图 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:24}}>
+        {agents.map(agent => (
+          <div key={agent.id} style={{backgroundColor:"white",borderRadius:16,padding:24,boxShadow:"0 4px 6px rgba(0,0,0,0.1)",border:"2px solid",borderColor:agent.status==="working"?"#10b981":agent.status==="break"?"#f59e0b":"#e5e7eb"}}>
+            {/* 工作站 */}
+            <div style={{position:"relative",height:120,backgroundColor:"#1f2937",borderRadius:12,padding:12,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {/* 显示器 */}
+              <div style={{width:80,height:60,backgroundColor:agent.computerOn?"#3b82f6":"#374151",borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:agent.computerOn?"0 0 20px #3b82f6":"none"}}>
+                {agent.computerOn && <span style={{fontSize:20}}>💻</span>}
+              </div>
+              {/* 桌子 */}
+              <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:120,height:8,backgroundColor:"#9ca3af",borderRadius:4}}></div>
+            </div>
+            
+            {/* Agent 头像和状态 */}
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+              <div style={{position:"relative"}}>
+                <span style={{fontSize:48}}>{agent.avatar}</span>
+                <div style={{position:"absolute",bottom:0,right:0,width:16,height:16,borderRadius:"50%",backgroundColor:statusColors[agent.status],border:"3px solid white"}}></div>
+              </div>
+              <div>
+                <div style={{fontWeight:600,fontSize:16}}>{agent.name}</div>
+                <div style={{fontSize:12,color:"#6b7280"}}>{agent.role}</div>
+              </div>
+            </div>
+
+            {/* 当前任务 */}
+            <div style={{backgroundColor:"#f3f4f6",borderRadius:8,padding:12,marginBottom:12}}>
+              <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>当前任务</div>
+              <div style={{fontSize:13,color:agent.currentTask?"#1f2937":"#9ca3af"}}>{agent.currentTask || "等待任务中..."}</div>
+            </div>
+
+            {/* 控制按钮 */}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>toggleStatus(agent.id)} style={{flex:1,padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",backgroundColor:agent.status==="working"?"#ef4444":"#10b981",color:"white",fontSize:13}}>
+                {agent.status==="working"?"⏹ 停止工作":"▶️ 开始工作"}
+              </button>
+              <button onClick={()=>toggleComputer(agent.id)} style={{padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",backgroundColor:agent.computerOn?"#6b7280":"#3b82f6",color:"white",fontSize:13}}>
+                {agent.computerOn?"💤 关机":"🖥 开机"}
+              </button>
+              <button onClick={()=>setEditing(agent)} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #e5e7eb",cursor:"pointer",backgroundColor:"white",fontSize:13}}>✏️</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 编辑弹窗 */}
+      {editing && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{backgroundColor:"white",borderRadius:12,padding:24,width:"90%",maxWidth:400}}>
+            <h3 style={{marginBottom:16}}>✏️ 编辑 Agent</h3>
+            <input type="text" value={editing.name} onChange={(e)=>setEditing({...editing,name:e.target.value})} placeholder="名称" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={editing.avatar} onChange={(e)=>setEditing({...editing,avatar:e.target.value})} placeholder="头像 emoji" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={editing.role} onChange={(e)=>setEditing({...editing,role:e.target.value})} placeholder="角色" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <input type="text" value={editing.currentTask} onChange={(e)=>setEditing({...editing,currentTask:e.target.value})} placeholder="当前任务" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
+            <div style={{display:"flex",gap:12,marginBottom:16}}>
+              <label style={{display:"flex",alignItems:"center",gap:8}}><input type="radio" checked={editing.status==="working"} onChange={()=>setEditing({...editing,status:"working"})} />工作中</label>
+              <label style={{display:"flex",alignItems:"center",gap:8}}><input type="radio" checked={editing.status==="idle"} onChange={()=>setEditing({...editing,status:"idle"})} />空闲</label>
+              <label style={{display:"flex",alignItems:"center",gap:8}}><input type="radio" checked={editing.status==="break"} onChange={()=>setEditing({...editing,status:"break"})} />休息</label>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button onClick={()=>setEditing(null)}>取消</button><button onClick={upd} style={{padding:"8px 20px",backgroundColor:"#2563eb",color:"white",border:"none",borderRadius:8,cursor:"pointer"}}>保存</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"tasks" | "content" | "calendar" | "memory" | "team">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "content" | "calendar" | "memory" | "team" | "office">("tasks");
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -458,11 +562,14 @@ export default function Home() {
           <button onClick={()=>setActiveTab("team")} style={{padding:"12px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:500,backgroundColor:activeTab==="team"?"#dc2626":"white",color:activeTab==="team"?"white":"#666",boxShadow:activeTab==="team"?"none":"0 1px 2px rgba(0,0,0,0.1)"}}>
             👥 团队
           </button>
+          <button onClick={()=>setActiveTab("office")} style={{padding:"12px 24px",borderRadius:8,border:"none",cursor:"pointer",fontSize:15,fontWeight:500,backgroundColor:activeTab==="office"?"#7c3aed":"white",color:activeTab==="office"?"white":"#666",boxShadow:activeTab==="office"?"none":"0 1px 2px rgba(0,0,0,0.1)"}}>
+            🏢 办公室
+          </button>
         </div>
 
         {/* 内容区域 */}
         <div style={{backgroundColor:"white",borderRadius:12,padding:24,boxShadow:"0 1px 3px rgba(0,0,0,0.1)"}}>
-          {activeTab==="tasks"?<TaskBoard onError={setError}/>:activeTab==="content"?<ContentPipeline onError={setError}/>:activeTab==="calendar"?<CalendarBoard onError={setError}/>:activeTab==="memory"?<MemoryBoard onError={setError}/>:<TeamBoard onError={setError}/>}
+          {activeTab==="tasks"?<TaskBoard onError={setError}/>:activeTab==="content"?<ContentPipeline onError={setError}/>:activeTab==="calendar"?<CalendarBoard onError={setError}/>:activeTab==="memory"?<MemoryBoard onError={setError}/>:activeTab==="team"?<TeamBoard onError={setError}/>:<OfficeBoard onError={setError}/>}
         </div>
       </div>
     </div>
