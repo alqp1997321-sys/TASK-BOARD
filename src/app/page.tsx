@@ -21,7 +21,7 @@ interface ContentItem {
   title: string;
   description?: string;
   script?: string;
-  images: string[];
+  images: string[] | string;
   stage: ContentStage;
   assignee: Assignee;
   createdAt: number;
@@ -285,7 +285,7 @@ function ContentPipeline({ onError }: { onError: (err: string) => void }) {
     const item: ContentItem = {
       id: Date.now().toString(),
       ...newItem,
-      images: newItem.images.split("\n").filter(Boolean),
+      images: typeof newItem.images === "string" ? newItem.images.split("\n").filter(Boolean) : newItem.images,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -296,7 +296,10 @@ function ContentPipeline({ onError }: { onError: (err: string) => void }) {
 
   const updateItem = () => {
     if (!editingItem || !editingItem.title.trim()) return;
-    const updated = content.map(c => c.id === editingItem.id ? { ...editingItem, updatedAt: Date.now(), images: typeof editingItem.images === "string" ? (editingItem.images as string).split("\n").filter(Boolean) : editingItem.images } : c);
+    const updatedImages = typeof editingItem.images === "string" 
+      ? editingItem.images.split("\n").filter(Boolean)
+      : (Array.isArray(editingItem.images) ? editingItem.images : []);
+    const updated = content.map(c => c.id === editingItem.id ? { ...editingItem, images: updatedImages, updatedAt: Date.now() } : c);
     saveContentHandler(updated);
     setEditingItem(null);
   };
@@ -349,7 +352,7 @@ function ContentPipeline({ onError }: { onError: (err: string) => void }) {
                     <span style={{ fontSize: "10px", color: item.assignee === "大哥" ? "#7c3aed" : "#0369a1", backgroundColor: item.assignee === "大哥" ? "#f3e8ff" : "#e0f2fe", padding: "2px 6px", borderRadius: "4px" }}>
                       {item.assignee === "大哥" ? "👤" : "🤖"} {item.assignee}
                     </span>
-                    {item.images?.length > 0 && <span style={{ fontSize: "10px" }}>🖼️ {item.images.length}</span>}
+                    {typeof item.images === "string" ? item.images.split("\n").filter(Boolean).length : (Array.isArray(item.images) ? item.images.length : 0) > 0 && <span style={{ fontSize: "10px" }}>🖼️ {typeof item.images === "string" ? item.images.split("\n").filter(Boolean).length : item.images.length}</span>}
                   </div>
                 </div>
               ))}
@@ -397,7 +400,7 @@ function ContentPipeline({ onError }: { onError: (err: string) => void }) {
             <input type="text" value={editingItem.title} onChange={(e) => setEditingItem({ ...editingItem, title: e.target.value })} placeholder="标题 *" style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: "8px", marginBottom: "12px" }} />
             <textarea value={editingItem.description || ""} onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })} placeholder="简介/大纲" rows={2} style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: "8px", marginBottom: "12px" }} />
             <textarea value={editingItem.script || ""} onChange={(e) => setEditingItem({ ...editingItem, script: e.target.value })} placeholder="完整脚本" rows={6} style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: "8px", marginBottom: "12px" }} />
-            <textarea value={Array.isArray(editingItem.images) ? editingItem.images.join("\n") : ""} onChange={(e) => setEditingItem({ ...editingItem, images: e.target.value })} placeholder="图片链接（每行一个）" rows={3} style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: "8px", marginBottom: "12px" }} />
+            <textarea value={typeof editingItem.images === "string" ? editingItem.images : (Array.isArray(editingItem.images) ? editingItem.images.join("\n") : "")} onChange={(e) => setEditingItem({ ...editingItem, images: e.target.value })} placeholder="图片链接（每行一个）" rows={3} style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: "8px", marginBottom: "12px" }} />
             {editingItem.script && (
               <div style={{ marginBottom: "12px", padding: "10px", backgroundColor: "#f5f5f5", borderRadius: "8px", maxHeight: "150px", overflow: "auto" }}>
                 <div style={{ fontSize: "12px", color: "#666", marginBottom: "6px" }}>脚本预览：</div>
