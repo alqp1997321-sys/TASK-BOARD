@@ -407,33 +407,39 @@ function TeamBoard(props: { onError: (e: string) => void }) {
     const input = chatInput;
     setChatInput("");
     
-    // Save to API
+    // Save to Gist
     try {
       await sendChatMessage({ memberId: chatMember.id, role: "user", content: input });
     } catch {}
     
-    // Simulate response (in future, connect to real OpenClaw API)
-    setTimeout(async () => {
-      const responses: Record<string, string> = {
-        "1": `收到！我是 BRO，你的数字战友。有什么需要我帮忙的吗？`,
-        "2": `💻 收到！我准备开始写代码了。请告诉我具体需求...`,
-        "3": `✍️ 好的，我来帮你整理一下思路。你想写什么内容？`,
-        "4": `🎨 收到！我准备好了，随时可以开始设计工作。`,
-        "5": `🛡️ 收到！我来检查一下系统状态...`,
-      };
-      
-      const responseMsg = { 
-        id: (Date.now() + 1).toString(), 
-        role: "assistant" as const, 
-        content: responses[chatMember?.id] || `收到来自 ${chatMember?.name} 的消息: "${input}" - 我会认真思考并回复！`,
-        timestamp: Date.now() 
-      };
-      
-      setChatMessages(prev => [...prev, responseMsg]);
+    // 发送到 Telegram 给 BRO
+    try {
+      const tgRes = await fetch("/api/telegram/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          chatId: "6250779782", 
+          text: `💬 [${chatMember.name}]: ${input}` 
+        })
+      });
+      if (!tgRes.ok) console.log("Telegram send failed");
+    } catch (e) { console.log("Telegram error:", e); }
+    
+    // 轮询等待回复 (最多30秒)
+    let pollCount = 0;
+    const pollReply = setInterval(async () => {
+      pollCount++;
       try {
-        await sendChatMessage({ memberId: chatMember!.id, role: "assistant", content: responseMsg.content });
+        const history = await fetchChatHistory(chatMember.id);
+        const latestMsgs = history.filter((m: any) => m.timestamp > userMsg.timestamp && m.role === "assistant");
+        if (latestMsgs.length > 0) {
+          clearInterval(pollReply);
+          setChatMessages(prev => [...prev, ...latestMsgs]);
+        }
       } catch {}
-    }, 500);
+      
+      if (pollCount >= 30) clearInterval(pollReply);
+    }, 1000);
   };
   
   if (loading) return <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>⏳</div>;
