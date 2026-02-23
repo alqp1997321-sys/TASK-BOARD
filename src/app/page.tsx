@@ -333,12 +333,35 @@ function MemoryBoard(props: { onError: (e: string) => void }) {
   );
 }
 
+// Chat API functions
+async function fetchChatHistory(memberId: string) { 
+  const r = await fetch(`/api/chat?memberId=${memberId}`); 
+  return r.ok ? r.json() : []; 
+}
+async function sendChatMessage(msg: { memberId: string; role: "user" | "assistant"; content: string }) { 
+  const r = await fetch("/api/chat", { 
+    method: "POST", 
+    headers: { "Content-Type": "application/json" }, 
+    body: JSON.stringify({ ...msg, id: Date.now().toString(), timestamp: Date.now() }) 
+  }); 
+  return r.ok ? r.json() : null; 
+}
+async function clearChatHistory(memberId: string) { 
+  await fetch(`/api/chat?memberId=${memberId}`, { method: "DELETE" }); 
+}
+
 function TeamBoard(props: { onError: (e: string) => void }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newM, setNewM] = useState({ name: "", role: "", description: "", avatar: "🤖", status: "idle" as "active" | "idle", skills: "" });
+  
+  // Chat state
+  const [chatMember, setChatMember] = useState<TeamMember | null>(null);
+  const [chatMessages, setChatMessages] = useState<{id: string; role: "user" | "assistant"; content: string; timestamp: number}[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   const defaultMembers: TeamMember[] = [
     { id: "1", name: "BRO", role: "主助手", description: "AI助手，协调所有子代理，负责与大哥直接沟通", avatar: "🤖", status: "active", skills: ["任务管理", "决策", "协调"] },
@@ -356,6 +379,63 @@ function TeamBoard(props: { onError: (e: string) => void }) {
   const byRole = (r: string) => team.filter(m => m.role === r);
   const roles = ["主助手", "开发者", "写作者", "设计师", "运维"];
   const roleColors: Record<string, string> = { "主助手": "#fef3c7", "开发者": "#dbeafe", "写作者": "#e0e7ff", "设计师": "#fce7f3", "运维": "#d1fae5" };
+  
+  // Chat functions
+  const openChat = async (member: TeamMember) => {
+    setChatMember(member);
+    setChatLoading(true);
+    try {
+      const history = await fetchChatHistory(member.id);
+      setChatMessages(history || []);
+    } catch {
+      setChatMessages([]);
+    }
+    setChatLoading(false);
+  };
+  
+  const closeChat = () => {
+    setChatMember(null);
+    setChatMessages([]);
+    setChatInput("");
+  };
+  
+  const sendMessage = async () => {
+    if (!chatInput.trim() || !chatMember) return;
+    
+    const userMsg = { id: Date.now().toString(), role: "user" as const, content: chatInput, timestamp: Date.now() };
+    setChatMessages(prev => [...prev, userMsg]);
+    const input = chatInput;
+    setChatInput("");
+    
+    // Save to API
+    try {
+      await sendChatMessage({ memberId: chatMember.id, role: "user", content: input });
+    } catch {}
+    
+    // Simulate response (in future, connect to real OpenClaw API)
+    setTimeout(async () => {
+      const responses: Record<string, string> = {
+        "1": `收到！我是 BRO，你的数字战友。有什么需要我帮忙的吗？`,
+        "2": `💻 收到！我准备开始写代码了。请告诉我具体需求...`,
+        "3": `✍️ 好的，我来帮你整理一下思路。你想写什么内容？`,
+        "4": `🎨 收到！我准备好了，随时可以开始设计工作。`,
+        "5": `🛡️ 收到！我来检查一下系统状态...`,
+      };
+      
+      const responseMsg = { 
+        id: (Date.now() + 1).toString(), 
+        role: "assistant" as const, 
+        content: responses[chatMember?.id] || `收到来自 ${chatMember?.name} 的消息: "${input}" - 我会认真思考并回复！`,
+        timestamp: Date.now() 
+      };
+      
+      setChatMessages(prev => [...prev, responseMsg]);
+      try {
+        await sendChatMessage({ memberId: chatMember!.id, role: "assistant", content: responseMsg.content });
+      } catch {}
+    }, 500);
+  };
+  
   if (loading) return <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>⏳</div>;
 
   return (
@@ -381,7 +461,7 @@ function TeamBoard(props: { onError: (e: string) => void }) {
                 </div>
                 <p style={{fontSize:13,color:"#6b7280",margin:"0 0 12px 0"}}>{m.description}</p>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:12}}>{m.skills.map((s,i)=><span key={i} style={{fontSize:11,backgroundColor:"#f3f4f6",color:"#4b5563",padding:"2px 8px",borderRadius:12}}>{s}</span>)}</div>
-                <button onClick={()=>alert('正在启动与 '+m.name+' 的对话...\n\n角色设定：'+m.description+'\n\n技能：'+m.skills.join(", "))} style={{marginTop:12,width:"100%",padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",backgroundColor:"#10b981",color:"white",fontSize:13}}>💬 开始对话</button>
+                <button onClick={()=>openChat(m)} style={{marginTop:12,width:"100%",padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",backgroundColor:"#10b981",color:"white",fontSize:13}}>💬 开始对话</button>
               </div>
             ))}
             {byRole(role).length===0 && <div style={{color:"#9ca3af",fontSize:13,padding:8}}>暂无成员</div>}
@@ -423,6 +503,68 @@ function TeamBoard(props: { onError: (e: string) => void }) {
             <textarea value={newM.description} onChange={(e)=>setNewM({...newM,description:e.target.value})} placeholder="描述" rows={2} style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
             <input type="text" value={newM.skills} onChange={(e)=>setNewM({...newM,skills:e.target.value})} placeholder="技能 (逗号分隔)" style={{width:"100%",padding:10,border:"1px solid #ddd",borderRadius:8,marginBottom:12}} />
             <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button onClick={()=>setShowAdd(false)}>取消</button><button onClick={add} style={{padding:"8px 20px",backgroundColor:"#2563eb",color:"white",border:"none",borderRadius:8,cursor:"pointer"}}>添加</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Panel - 内嵌对话界面 */}
+      {chatMember && (
+        <div style={{position:"fixed",inset:0,backgroundColor:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
+          <div style={{backgroundColor:"white",borderRadius:16,width:"90%",maxWidth:500,height:"80vh",maxHeight:700,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {/* Chat Header */}
+            <div style={{padding:16,borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",justifyContent:"space-between",backgroundColor:"#f9fafb"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:32}}>{chatMember.avatar}</span>
+                <div>
+                  <div style={{fontWeight:600,fontSize:16}}>💬 {chatMember.name}</div>
+                  <div style={{fontSize:12,color:"#6b7280"}}>{chatMember.role}</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{clearChatHistory(chatMember.id);setChatMessages([]);}} style={{padding:"6px 12px",borderRadius:6,border:"1px solid #e5e7eb",cursor:"pointer",backgroundColor:"white",fontSize:12,color:"#6b7280"}}>🗑️ 清空</button>
+                <button onClick={closeChat} style={{padding:"6px 12px",borderRadius:6,border:"none",cursor:"pointer",backgroundColor:"#ef4444",color:"white",fontSize:12}}>✕ 关闭</button>
+              </div>
+            </div>
+            
+            {/* Chat Messages */}
+            <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12,backgroundColor:"#f3f4f6"}}>
+              {chatLoading ? (
+                <div style={{textAlign:"center",padding:20,color:"#6b7280"}}>加载中...</div>
+              ) : chatMessages.length === 0 ? (
+                <div style={{textAlign:"center",padding:40,color:"#9ca3af"}}>
+                  <div style={{fontSize:40,marginBottom:12}}>{chatMember.avatar}</div>
+                  <div>开始和 {chatMember.name} 对话吧！</div>
+                  <div style={{fontSize:12,marginTop:8}}>{chatMember.description}</div>
+                </div>
+              ) : (
+                chatMessages.map(msg => (
+                  <div key={msg.id} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+                    <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:16,backgroundColor:msg.role==="user"?"#2563eb":"white",color:msg.role==="user"?"white":"#1f2937",boxShadow:"0 1px 2px rgba(0,0,0,0.1)",fontSize:14}}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* Chat Input */}
+            <div style={{padding:16,borderTop:"1px solid #e5e7eb",display:"flex",gap:8,backgroundColor:"white"}}>
+              <input 
+                type="text" 
+                value={chatInput} 
+                onChange={(e)=>setChatInput(e.target.value)} 
+                onKeyDown={(e)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+                placeholder={`发送消息给 ${chatMember.name}...`}
+                style={{flex:1,padding:"12px 16px",border:"1px solid #e5e7eb",borderRadius:24,fontSize:14,outline:"none"}}
+              />
+              <button 
+                onClick={sendMessage}
+                disabled={!chatInput.trim()}
+                style={{padding:"10px 20px",borderRadius:24,border:"none",cursor:chatInput.trim()?"pointer":"not-allowed",backgroundColor:chatInput.trim()?"#2563eb":"#9ca3af",color:"white",fontSize:14}}
+              >
+                ➤
+              </button>
+            </div>
           </div>
         </div>
       )}
